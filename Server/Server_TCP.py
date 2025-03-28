@@ -18,7 +18,7 @@ Server
             1.3.1.3 - Registers client if everything go as expected, avoiding names that could break the connection, and avoinding that any timeout breaks the code
             1.3.1.4 - If everything is right, a new thread called "clients_listeners" starts
                     1.3.1.4.1 - the "clients_listeners" thread make the connection with the client, searching for new messages everytime
-                    1.3.1.4.2 - if the client asks to leave, the "handle_client_disconnections" is called
+                    1.3.1.4.2 - if the client asks to leave, the "handle_client_disconnection" is called
       1.3.2 - "host_sender" thread searchs for new host messages everytime
   1.4 - There is a loop in the end of "main", that handles KeyboardInterruptions if they happen
 
@@ -49,6 +49,7 @@ def handle_client_connections(server, stop_event, clients_dictionary, host_publi
 
 
             client_counter += 1  # New Client
+            client_id = "client" + str(client_counter)
             print("-> Stablishing New Connection...")
 
 
@@ -81,11 +82,10 @@ def handle_client_connections(server, stop_event, clients_dictionary, host_publi
                 decoded_client_name = rsa.decrypt(encoded_client_name, host_private_key).decode("utf-8")
 
                 ### - Avoiding KeyboardInterruption - ### -> This keeps clients_dictionary clean from possible trash data TALVEZ FAZER COM ELSE AO INVES DE CONTINUE
-                client_id = "client" + str(client_counter)
                 clients_dictionary[client_id] = {"name": decoded_client_name, "socket": client_socket, "public_key" : client_public_key}
 
                 if decoded_client_name == "/quit":
-                    handle_client_disconnections(client_id, clients_dictionary, True)
+                    handle_client_disconnection(client_id, clients_dictionary, True)
                     continue
 
                 ## - Starting Client's Listener - ##
@@ -96,29 +96,32 @@ def handle_client_connections(server, stop_event, clients_dictionary, host_publi
 
             # timeout #
             else:
-                handle_client_disconnections(client_id, clients_dictionary, False) ## NEM SEMPRE VAI TER UM PERFIL CRIADO
+                clients_dictionary[client_id] = {"name": None, "socket": client_socket, "public_key" : client_public_key}
+                handle_client_disconnection(client_id, clients_dictionary, False) ## NEM SEMPRE VAI TER UM PERFIL CRIADO
                 continue
 
 
 
 
 
+# SE DOIS CLIENTES TENTAM SE CONECTAR AO MESMO TEMPO, SE UM NAO TERMINAR DE ESCREVER O NOME, O SERVER FICA PARADO
 
 
 
-
-def handle_client_disconnections(client_id, clients_dictionary, has_client_profile):
-
-   
+def handle_client_disconnection(client_id, clients_dictionary, has_client_profile):
+  
     clients_dictionary[client_id]["socket"].sendall(rsa.encrypt("quit".encode("utf-8"), clients_dictionary[client_id]["public_key"])) # If client alters the "SIGINT" reception, it doesn't matter, he is already off, the error will only happen on his side
-    client_disconnect_message = f"-> Connection with \"{clients_dictionary[client_id]["name"]}\" Closed." # tentar padronizar bglh de string
-
+        
+    if has_client_profile:
+        client_disconnect_message = f"-> Connection with \"{clients_dictionary[client_id]["name"]}\" Closed." # tentar padronizar bglh de string
+    else:
+        client_disconnect_message = f"-> Connection with New Client Timed Out." # tentar padronizar bglh de string
 
     ## - Broadcast Any Client Message to Everyone- ###
     print(client_disconnect_message)
     for client in clients_dictionary:
         if clients_dictionary[client]["name"] != clients_dictionary[client_id]["name"]:
-                clients_dictionary[client]["socket"].sendall(rsa.encrypt(client_disconnect_message.encode("utf-8"), clients_dictionary[client]["public_key"]))  
+            clients_dictionary[client]["socket"].sendall(rsa.encrypt(client_disconnect_message.encode("utf-8"), clients_dictionary[client]["public_key"]))  
 
     clients_dictionary[client_id]["socket"].close()
     clients_dictionary.pop(client_id, None)
@@ -162,7 +165,7 @@ def clients_listeners(client_id, stop_event, clients_dictionary, host_public_key
                     decoded_broadcast = client_name + ":" + decoded_client_message
                 # Verify Exit Request
                 else:
-                    handle_client_disconnections(client_id, clients_dictionary)
+                    handle_client_disconnection(client_id, clients_dictionary, True)
                     break
 
                 ## - Broadcast Any Client Message to Everyone- ##
@@ -174,7 +177,7 @@ def clients_listeners(client_id, stop_event, clients_dictionary, host_public_key
 
             ## - Timeout - ##
             else:
-                handle_client_disconnections(client_id, clients_dictionary, True)
+                handle_client_disconnection(client_id, clients_dictionary, True)
                 break
                 
 

@@ -16,6 +16,17 @@ import time
 
 
 
+def handle_disconnection(server_connection, stop_event, host_public_key):
+
+    server_connection.sendall(rsa.encrypt("/quit".encode("utf-8"), host_public_key))
+    print("\n-> Disconnecting...")
+    
+    try:
+        server_connection.close()
+    except:
+        pass
+    stop_event.set()
+    print("-> Disconnected")
 
 # falta usar o stop event, 
 
@@ -43,15 +54,12 @@ def host_listener(server_connection, stop_event, client_private_key):
             if decoded_host_message != "quit":
                 print(decoded_host_message)
             else:
-                try:
-                    server_connection.close()
-                except:
-                    pass
-                stop_event.set()
+                stop_event.set() ##########
                 break
         else:
-            print("Cooldown")
-            
+            print("-> Connection with Host Expired due to Inactivity")
+            stop_event.set() ######33
+            break
 
 
 
@@ -70,11 +78,8 @@ def client_sender(server_connection, stop_event, host_public_key):
         try:
             server_connection.sendall(encoded_message)
         except:
-            try:
-                server_connection.close()
-            except:
-                pass
-            stop_event.set()
+            print("-> Connection with Host Expired due to Inactivity")
+            stop_event.set() #################3
             break
 
 
@@ -87,7 +92,7 @@ def main():
     try: # - TCP Connection - #
         try:
             server_connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_connection.connect(("8.tcp.ngrok.io", 16474))
+            server_connection.connect(("8.tcp.ngrok.io", 15368))
         except Exception:
             # print(f"Couldn't Connect to {address}:{port}.")
             print(f"-> Couldn't Connect to Specified Address : {Exception}")
@@ -133,17 +138,12 @@ def main():
         while not stop_event.is_set():  # By doing this, it's possible to solve a KeyboardInterrupt
             time.sleep(1)
 
-
+        handle_disconnection(server_connection, stop_event, host_public_key)
+        sys.exit(1) # The code comes here after any disconnection
+        # VERIFICAR SE EU FECHEI TODAS AS THREADS
     except KeyboardInterrupt:
 
-        server_connection.sendall(rsa.encrypt("/quit".encode("utf-8"), host_public_key))
-        print("-> Disconnecting...")
-        try:
-            server_connection.close()
-            print("")
-        except:
-            print("-> Connection with Host Already Closed.")
-        stop_event.set()
+        handle_disconnection(server_connection, stop_event, host_public_key)
         sys.exit(1)
 
 
